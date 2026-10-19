@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArchiMate Kvíz</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --border:#dde1e7; --accent:#2f5bd3;
+          --ok:#1f8a4c; --okbg:#e6f6ec; --bad:#c62f2f; --badbg:#fdecec; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1d2128; --text:#e6e8eb; --muted:#9aa3ad; --border:#2e343d; --accent:#7b9cff;
+            --ok:#4cc27e; --okbg:#173525; --bad:#ff7b7b; --badbg:#3a1d1d; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:16px; }
+  header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  h1 { font-size:20px; margin:0; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button, select, input { font:inherit; color:var(--text); background:var(--card); border:1px solid var(--border);
+          border-radius:8px; padding:6px 12px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.on { outline:2px solid var(--accent); }
+  input[type=number] { width:80px; cursor:text; }
+  .stats { color:var(--muted); font-size:14px; }
+  .bar { height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin:8px 0 16px; }
+  .bar > div { height:100%; background:var(--accent); transition:width .2s; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .qnum { color:var(--muted); font-size:14px; margin-bottom:6px; }
+  .qtext { font-size:18px; margin:0 0 12px; }
+  .qtext img { display:block; max-width:100%; height:auto; margin:12px auto; border:1px solid var(--border);
+               border-radius:6px; background:#fff; cursor:zoom-in; }
+  .opts { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .opt { text-align:left; padding:10px 14px; display:flex; gap:10px; align-items:flex-start; line-height:1.4; }
+  .opt b { flex:none; width:22px; }
+  .opt.ok { background:var(--okbg); border-color:var(--ok); }
+  .opt.bad { background:var(--badbg); border-color:var(--bad); }
+  .opt:disabled { cursor:default; color:var(--text); }
+  .alt { color:var(--muted); font-size:14px; margin-top:12px; border-top:1px dashed var(--border); padding-top:10px; display:none; }
+  .alt.show { display:block; }
+  .nav { display:flex; justify-content:space-between; gap:8px; margin-top:16px; }
+  .verdict { font-weight:600; margin-top:12px; min-height:24px; }
+  .verdict.ok { color:var(--ok); } .verdict.bad { color:var(--bad); }
+  .zoom { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; padding:16px; cursor:zoom-out; z-index:10; }
+  .zoom img { max-width:100%; max-height:100%; background:#fff; border-radius:6px; }
+  .zoom.show { display:flex; }
+  .hint { color:var(--muted); font-size:13px; margin-top:16px; text-align:center; }
+  .done { text-align:center; padding:24px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">ArchiMate kvíz (OG0-023 + OGA-031)</h1>
+    <div class="row">
+      <button id="lang" title="L">EN</button>
+      <button id="showAlt" title="T"></button>
+    </div>
+  </header>
+
+  <div class="row">
+    <select id="mode"></select>
+    <button id="shuffle"></button>
+    <button id="reset"></button>
+    <span class="row"><input id="jump" type="number" min="1"><button id="go"></button></span>
+  </div>
+  <div class="stats" id="stats" style="margin-top:8px"></div>
+  <div class="bar"><div id="progress"></div></div>
+
+  <div class="card" id="card"></div>
+  <div class="nav">
+    <button id="prev">←</button>
+    <button id="next" class="primary">→</button>
+  </div>
+  <div class="hint" id="hint"></div>
+</div>
+<div class="zoom" id="zoom"><img alt=""></div>
+
+<script src="data.js"></script>
+<script src="data_oga031.js"></script>
+<script>
+const T = {
+  sk: { title:"ArchiMate kvíz (OG0-023 + OGA-031)", modeAll:"Všetky otázky", modeWrong:"Len chybné", modeNew:"Len nezodpovedané",
+        shuffle:"Zamiešať", order:"Poradie", reset:"Reset", go:"Choď", q:"Otázka", of:"z",
+        ok:"Správne!", bad:"Nesprávne – správna odpoveď je ", showAlt:"Ukázať EN", hideAlt:"Skryť EN",
+        stats:(a,c,w,t)=>`Zodpovedané: ${a}/${t} · Správne: ${c} · Chybné: ${w}` + (a?` · Úspešnosť: ${Math.round(c/a*100)} %`:""),
+        empty:"V tomto režime nie sú žiadne otázky. 🎉", next:"Ďalej →", prev:"← Späť",
+        hint:"Klávesy: 1–5 / A–E odpoveď · ←/→ navigácia · L jazyk · T preklad · klik na obrázok = zväčšiť" },
+  en: { title:"ArchiMate quiz (OG0-023 + OGA-031)", modeAll:"All questions", modeWrong:"Wrong only", modeNew:"Unanswered only",
+        shuffle:"Shuffle", order:"In order", reset:"Reset", go:"Go", q:"Question", of:"of",
+        ok:"Correct!", bad:"Wrong – the correct answer is ", showAlt:"Show SK", hideAlt:"Hide SK",
+        stats:(a,c,w,t)=>`Answered: ${a}/${t} · Correct: ${c} · Wrong: ${w}` + (a?` · Score: ${Math.round(c/a*100)} %`:""),
+        empty:"No questions in this mode. 🎉", next:"Next →", prev:"← Back",
+        hint:"Keys: 1–5 / A–E answer · ←/→ navigate · L language · T translation · click image = zoom" }
+};
+const L = "ABCDEFGH";
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("archimate_" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("archimate_" + k, JSON.stringify(v)); } catch {} }
+};
+
+let lang = store.get("lang", "sk");
+let showAlt = store.get("alt", false);
+let mode = store.get("mode", "all");
+let shuffled = store.get("shuffled", false);
+let answers = store.get("answers", {});      // n -> chosen index
+let order = [], pos = 0;
+
+const $ = id => document.getElementById(id);
+
+function buildOrder() {
+  let list = QUESTIONS.filter(q =>
+    mode === "all" ? true :
+    mode === "wrong" ? (q.n in answers && answers[q.n] !== q.a) :
+    !(q.n in answers));
+  if (shuffled) for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  order = list; pos = 0;
+}
+
+function qHtml(q, l) {
+  let i = 0;
+  return q[l].q.split("[IMG]").map((part, k, arr) =>
+    escape(part) + (k < arr.length - 1 ? `<img src="img/${q.img[i++]}" alt="diagram">` : "")).join("");
+}
+function escape(s) { return s.replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c])); }
+
+function render() {
+  const t = T[lang], other = lang === "sk" ? "en" : "sk";
+  document.documentElement.lang = lang;
+  $("title").textContent = t.title;
+  $("lang").textContent = lang === "sk" ? "EN" : "SK";
+  $("showAlt").textContent = showAlt ? t.hideAlt : t.showAlt;
+  $("shuffle").textContent = shuffled ? t.order : t.shuffle;
+  $("reset").textContent = t.reset;
+  $("go").textContent = t.go;
+  $("prev").textContent = t.prev; $("next").textContent = t.next;
+  $("hint").textContent = t.hint;
+  $("jump").max = QUESTIONS.length; $("jump").placeholder = "#";
+  $("mode").innerHTML = [["all", t.modeAll], ["wrong", t.modeWrong], ["new", t.modeNew]]
+    .map(([v, s]) => `<option value="${v}" ${v === mode ? "selected" : ""}>${s}</option>`).join("");
+
+  const answered = Object.keys(answers).length;
+  const correct = QUESTIONS.filter(q => answers[q.n] === q.a).length;
+  $("stats").textContent = t.stats(answered, correct, answered - correct, QUESTIONS.length);
+  $("progress").style.width = (answered / QUESTIONS.length * 100) + "%";
+
+  const card = $("card");
+  if (!order.length) { card.innerHTML = `<div class="done">${t.empty}</div>`; return; }
+  const q = order[pos];
+  const chosen = answers[q.n];
+  const done = chosen !== undefined;
+
+  let html = `<div class="qnum">${t.q} ${pos + 1} ${t.of} ${order.length} · #${q.n}</div>
+    <div class="qtext">${qHtml(q, lang)}</div><div class="opts">`;
+  q[lang].o.forEach((o, i) => {
+    let cls = "";
+    if (done && i === q.a) cls = "ok";
+    else if (done && i === chosen) cls = "bad";
+    html += `<button class="opt ${cls}" data-i="${i}" ${done ? "disabled" : ""}><b>${L[i]}.</b><span>${escape(o)}</span></button>`;
+  });
+  html += `</div>`;
+  if (done) html += `<div class="verdict ${chosen === q.a ? "ok" : "bad"}">${chosen === q.a ? t.ok : t.bad + L[q.a]}</div>`;
+  html += `<div class="alt ${showAlt ? "show" : ""}"><div>${escape(q[other].q.replace(/\[IMG\]/g, " … "))}</div>
+    <ol type="A" style="margin:6px 0 0;padding-left:22px">${q[other].o.map(o => `<li>${escape(o)}</li>`).join("")}</ol></div>`;
+  card.innerHTML = html;
+  $("prev").disabled = pos === 0;
+  $("next").disabled = pos === order.length - 1;
+}
+
+function answer(i) {
+  const q = order[pos];
+  if (!q || answers[q.n] !== undefined || i >= q[lang].o.length) return;
+  answers[q.n] = i; store.set("answers", answers); render();
+}
+function move(d) { const p = pos + d; if (p >= 0 && p < order.length) { pos = p; render(); window.scrollTo(0, 0); } }
+
+$("card").addEventListener("click", e => {
+  const b = e.target.closest(".opt"); if (b) return answer(+b.dataset.i);
+  if (e.target.tagName === "IMG") { $("zoom").querySelector("img").src = e.target.src; $("zoom").classList.add("show"); }
+});
+$("zoom").onclick = () => $("zoom").classList.remove("show");
+$("lang").onclick = () => { lang = lang === "sk" ? "en" : "sk"; store.set("lang", lang); render(); };
+$("showAlt").onclick = () => { showAlt = !showAlt; store.set("alt", showAlt); render(); };
+$("shuffle").onclick = () => { shuffled = !shuffled; store.set("shuffled", shuffled); buildOrder(); render(); };
+$("mode").onchange = e => { mode = e.target.value; store.set("mode", mode); buildOrder(); render(); };
+$("reset").onclick = () => { if (confirm(lang === "sk" ? "Vymazať všetky odpovede?" : "Clear all answers?")) { answers = {}; store.set("answers", answers); buildOrder(); render(); } };
+$("go").onclick = () => {
+  const n = +$("jump").value;
+  if (mode !== "all") { mode = "all"; store.set("mode", mode); buildOrder(); }
+  const i = order.findIndex(q => q.n === n);
+  if (i >= 0) { pos = i; render(); }
+};
+$("jump").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
+$("prev").onclick = () => move(-1);
+$("next").onclick = () => move(1);
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.key === "Escape") return $("zoom").classList.remove("show");
+  if (e.key === "ArrowRight" || e.key === "Enter") return move(1);
+  if (e.key === "ArrowLeft") return move(-1);
+  if (e.key === "l" || e.key === "L") return $("lang").click();
+  if (e.key === "t" || e.key === "T") return $("showAlt").click();
+  const k = e.key.toUpperCase();
+  if (/^[1-8]$/.test(k)) return answer(+k - 1);
+  if (/^[A-H]$/.test(k)) return answer(L.indexOf(k));
+});
+
+buildOrder();
+render();
+</script>
+</body>
+</html>
